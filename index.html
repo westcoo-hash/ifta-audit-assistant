@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IFTA Audit Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3d;
+    --accent: #f0c040;
+    --accent2: #ff6b35;
+    --green: #39e07a;
+    --red: #ff4757;
+    --text: #e8e8f0;
+    --muted: #7070a0;
+    --font: 'Syne', sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(240,192,64,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(240,192,64,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 48px 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  .header {
+    margin-bottom: 56px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  .logo-area { flex: 1; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(240,192,64,0.1);
+    border: 1px solid rgba(240,192,64,0.3);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  h1 {
+    font-size: clamp(28px, 5vw, 44px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    font-family: var(--mono);
+    line-height: 1.6;
+  }
+
+  /* Step indicator */
+  .steps {
+    display: flex;
+    gap: 0;
+    margin-bottom: 40px;
+  }
+
+  .step {
+    flex: 1;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    position: relative;
+    transition: all 0.3s;
+  }
+
+  .step:first-child { border-radius: 8px 0 0 8px; }
+  .step:last-child { border-radius: 0 8px 8px 0; }
+  .step + .step { border-left: none; }
+
+  .step.active {
+    background: rgba(240,192,64,0.08);
+    border-color: rgba(240,192,64,0.4);
+  }
+
+  .step.done {
+    background: rgba(57,224,122,0.06);
+    border-color: rgba(57,224,122,0.3);
+  }
+
+  .step-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 2px;
+  }
+
+  .step.active .step-num { color: var(--accent); }
+  .step.done .step-num { color: var(--green); }
+
+  .step-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .step.active .step-label { color: var(--text); }
+  .step.done .step-label { color: var(--green); }
+
+  /* Upload area */
+  .upload-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .upload-box {
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    padding: 32px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-box::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(240,192,64,0.04) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .upload-box:hover::before,
+  .upload-box.dragover::before { opacity: 1; }
+
+  .upload-box:hover,
+  .upload-box.dragover {
+    border-color: var(--accent);
+    background: rgba(240,192,64,0.04);
+  }
+
+  .upload-box.has-file {
+    border-color: var(--green);
+    border-style: solid;
+    background: rgba(57,224,122,0.04);
+  }
+
+  .upload-icon {
+    width: 44px;
+    height: 44px;
+    margin: 0 auto 12px;
+    background: var(--surface2);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+  }
+
+  .upload-box.has-file .upload-icon {
+    background: rgba(57,224,122,0.1);
+    border-color: rgba(57,224,122,0.3);
+  }
+
+  .upload-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .upload-sub {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .upload-box.has-file .upload-sub {
+    color: var(--green);
+  }
+
+  input[type="file"] { display: none; }
+
+  /* Analyze button */
+  .btn-analyze {
+    width: 100%;
+    padding: 16px;
+    background: var(--accent);
+    color: #0a0a0f;
+    border: none;
+    border-radius: 10px;
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 32px;
+    text-transform: uppercase;
+  }
+
+  .btn-analyze:hover:not(:disabled) {
+    background: #ffd060;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(240,192,64,0.3);
+  }
+
+  .btn-analyze:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Status / log */
+  .log-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    display: none;
+  }
+
+  .log-panel.visible { display: block; }
+
+  .log-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .log-title span {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+
+  .log-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .log-entry {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.5;
+  }
+
+  .log-entry .ts {
+    color: rgba(112,112,160,0.5);
+    flex-shrink: 0;
+    font-size: 10px;
+    padding-top: 1px;
+  }
+
+  .log-entry.success { color: var(--green); }
+  .log-entry.error { color: var(--red); }
+  .log-entry.info { color: var(--accent); }
+
+  /* Result panel */
+  .result-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: none;
+  }
+
+  .result-panel.visible { display: block; }
+
+  .result-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: var(--surface2);
+  }
+
+  .result-title {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .result-title .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+
+  .diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .diff-table th {
+    padding: 10px 16px;
+    text-align: left;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .diff-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(42,42,61,0.5);
+    vertical-align: middle;
+  }
+
+  .diff-table tr:last-child td { border-bottom: none; }
+
+  .diff-table tr:hover td { background: rgba(240,192,64,0.03); }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tag.mismatch { background: rgba(255,71,87,0.15); color: var(--red); border: 1px solid rgba(255,71,87,0.3); }
+  .tag.fixed { background: rgba(57,224,122,0.12); color: var(--green); border: 1px solid rgba(57,224,122,0.3); }
+  .tag.ok { background: rgba(112,112,160,0.1); color: var(--muted); border: 1px solid var(--border); }
+
+  .val-old { color: var(--red); text-decoration: line-through; opacity: 0.7; }
+  .val-new { color: var(--green); }
+
+  .summary-bar {
+    padding: 16px 24px;
+    background: rgba(57,224,122,0.06);
+    border-top: 1px solid rgba(57,224,122,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .summary-stats {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .stat-val {
+    font-size: 20px;
+    font-weight: 800;
+    font-family: var(--mono);
+    color: var(--green);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: var(--mono);
+  }
+
+  /* Download buttons */
+  .download-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .btn-dl {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    transition: all 0.2s;
+    text-decoration: none;
+  }
+
+  .btn-dl.primary {
+    background: var(--accent);
+    color: #0a0a0f;
+  }
+
+  .btn-dl.primary:hover {
+    background: #ffd060;
+    box-shadow: 0 4px 16px rgba(240,192,64,0.3);
+  }
+
+  .btn-dl.secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .btn-dl.secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Loading spinner */
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(10,10,15,0.3);
+    border-top-color: #0a0a0f;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Error state */
+  .error-box {
+    background: rgba(255,71,87,0.08);
+    border: 1px solid rgba(255,71,87,0.3);
+    border-radius: 10px;
+    padding: 16px 20px;
+    color: var(--red);
+    font-family: var(--mono);
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: none;
+  }
+
+  .error-box.visible { display: block; }
+
+  /* Footer */
+  .footer {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: gap;
+  }
+
+  .footer-text {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  @media (max-width: 600px) {
+    .upload-grid { grid-template-columns: 1fr; }
+    .steps { display: none; }
+    .summary-bar { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-area">
+      <div class="badge">AI-Powered</div>
+      <h1>IFTA <span>Audit</span><br>Assistant</h1>
+      <p class="subtitle">Upload your quarterly & movement reports.<br>Mismatched mileage is detected and fixed automatically.</p>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <div class="steps">
+    <div class="step active" id="step1">
+      <div class="step-num">Step 01</div>
+      <div class="step-label">Upload PDFs</div>
+    </div>
+    <div class="step" id="step2">
+      <div class="step-num">Step 02</div>
+      <div class="step-label">Analyze</div>
+    </div>
+    <div class="step" id="step3">
+      <div class="step-num">Step 03</div>
+      <div class="step-label">Download Fixed</div>
+    </div>
+  </div>
+
+  <!-- Upload area -->
+  <div class="upload-grid">
+    <div class="upload-box" id="box-ifta" onclick="document.getElementById('file-ifta').click()">
+      <div class="upload-icon" id="icon-ifta">📋</div>
+      <div class="upload-title">IFTA Quarterly Report</div>
+      <div class="upload-sub" id="sub-ifta">Click or drag PDF / CSV here</div>
+      <input type="file" id="file-ifta" accept=".pdf,.csv" onchange="handleFile('ifta', this)">
+    </div>
+
+    <div class="upload-box" id="box-mv" onclick="document.getElementById('file-mv').click()">
+      <div class="upload-icon" id="icon-mv">🚛</div>
+      <div class="upload-title">Movement Report</div>
+      <div class="upload-sub" id="sub-mv">Click or drag PDF / CSV here</div>
+      <input type="file" id="file-mv" accept=".pdf,.csv" onchange="handleFile('mv', this)">
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-box" id="error-box"></div>
+
+  <!-- Analyze button -->
+  <button class="btn-analyze" id="btn-analyze" disabled onclick="runAnalysis()">
+    <span id="btn-text">Upload Both Files First</span>
+  </button>
+
+  <!-- Log panel -->
+  <div class="log-panel" id="log-panel">
+    <div class="log-title"><span></span> Processing log</div>
+    <div class="log-entries" id="log-entries"></div>
+  </div>
+
+  <!-- Result panel -->
+  <div class="result-panel" id="result-panel">
+    <div class="result-header">
+      <div class="result-title">
+        <div class="dot"></div>
+        Audit Complete
+      </div>
+    </div>
+
+    <div id="diff-container">
+      <table class="diff-table">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>IFTA Report</th>
+            <th>Movement Report</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="diff-body"></tbody>
+      </table>
+    </div>
+
+    <div class="summary-bar">
+      <div class="summary-stats">
+        <div class="stat">
+          <div class="stat-val" id="stat-fixed">0</div>
+          <div class="stat-label">Fields Fixed</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="stat-ifta-total" style="color:var(--accent)">—</div>
+          <div class="stat-label">IFTA Total Miles</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="stat-mv-total" style="color:var(--accent)">—</div>
+          <div class="stat-label">Movement Total (Fixed)</div>
+        </div>
+      </div>
+      <div class="download-group">
+        <button class="btn-dl primary" id="btn-dl-mv" onclick="downloadFixed('movement')">⬇ Fixed Movement PDF</button>
+        <button class="btn-dl secondary" id="btn-dl-report" onclick="downloadReport()">⬇ Audit Report</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-text">IFTA Audit Assistant · PDF mileage reconciliation</div>
+    <div class="footer-text" id="footer-ts"></div>
+  </div>
+</div>
+
+<script>
+// State
+const state = {
+  iftaFile: null,
+  mvFile: null,
+  auditResult: null
+};
+
+// File handling
+function handleFile(type, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (type === 'ifta') {
+    state.iftaFile = file;
+    setBoxDone('box-ifta', 'icon-ifta', 'sub-ifta', file.name);
+  } else {
+    state.mvFile = file;
+    setBoxDone('box-mv', 'icon-mv', 'sub-mv', file.name);
+  }
+  checkReady();
+}
+
+function setBoxDone(boxId, iconId, subId, name) {
+  document.getElementById(boxId).classList.add('has-file');
+  document.getElementById(iconId).textContent = '✅';
+  document.getElementById(subId).textContent = name.length > 28 ? name.slice(0, 25) + '...' : name;
+}
+
+function checkReady() {
+  const btn = document.getElementById('btn-analyze');
+  const btnText = document.getElementById('btn-text');
+  if (state.iftaFile && state.mvFile) {
+    btn.disabled = false;
+    btnText.textContent = '⚡ Analyze & Fix Mileage';
+  } else {
+    btn.disabled = true;
+    btnText.textContent = 'Upload Both Files First';
+  }
+}
+
+// Drag and drop
+['box-ifta', 'box-mv'].forEach(id => {
+  const box = document.getElementById(id);
+  box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('dragover'); });
+  box.addEventListener('dragleave', () => box.classList.remove('dragover'));
+  box.addEventListener('drop', e => {
+    e.preventDefault();
+    box.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const type = id === 'box-ifta' ? 'ifta' : 'mv';
+    if (type === 'ifta') { state.iftaFile = file; setBoxDone('box-ifta', 'icon-ifta', 'sub-ifta', file.name); }
+    else { state.mvFile = file; setBoxDone('box-mv', 'icon-mv', 'sub-mv', file.name); }
+    checkReady();
+  });
+});
+
+// Logging
+function addLog(msg, type = '') {
+  const panel = document.getElementById('log-panel');
+  panel.classList.add('visible');
+  const entries = document.getElementById('log-entries');
+  const now = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const div = document.createElement('div');
+  div.className = `log-entry ${type}`;
+  div.innerHTML = `<span class="ts">${now}</span><span>${msg}</span>`;
+  entries.appendChild(div);
+  entries.scrollTop = entries.scrollHeight;
+}
+
+function setStep(n) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById(`step${i}`);
+    el.classList.remove('active', 'done');
+    if (i < n) el.classList.add('done');
+    else if (i === n) el.classList.add('active');
+  }
+}
+
+function isPdf(file) { return file.name.toLowerCase().endsWith('.pdf'); }
+
+// Extract text from PDF using PDF.js (page by page, memory efficient)
+async function extractPdfText(file, logFn) {
+  // Dynamically load PDF.js only when needed
+  if (!window.pdfjsLib) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const totalPages = pdf.numPages;
+  logFn && logFn(`  ${totalPages} pages found, extracting text...`, 'info');
+
+  let fullText = '';
+  // Process in batches of 20 pages to avoid memory issues
+  for (let i = 1; i <= totalPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    fullText += content.items.map(s => s.str).join(' ') + '\n';
+    page.cleanup();
+    if (i % 50 === 0) logFn && logFn(`  Processed ${i}/${totalPages} pages...`, '');
+  }
+  return fullText;
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+// Build message content block — always sends as text (no page limit issues)
+async function buildFileContent(file, label, logFn) {
+  let text;
+  if (isPdf(file)) {
+    text = await extractPdfText(file, logFn);
+  } else {
+    text = await readFileAsText(file);
+  }
+  // Truncate smartly: keep first 60k chars (enough for any IFTA report)
+  const MAX = 60000;
+  if (text.length > MAX) {
+    logFn && logFn(`  Large file — using first ${MAX} chars of ${text.length}`, '');
+    text = text.slice(0, MAX);
+  }
+  return {
+    type: 'text',
+    text: `=== ${label} ===\nFilename: ${file.name}\n\n${text}`
+  };
+}
+
+// Main analysis
+async function runAnalysis() {
+  const btn = document.getElementById('btn-analyze');
+  const btnText = document.getElementById('btn-text');
+  const errorBox = document.getElementById('error-box');
+  errorBox.classList.remove('visible');
+
+  btn.disabled = true;
+  btnText.innerHTML = '<div class="spinner"></div> Reading files...';
+  setStep(2);
+
+  try {
+    addLog(`Loading IFTA Report: ${state.iftaFile.name} (${(state.iftaFile.size / 1024).toFixed(0)} KB)`, 'info');
+    const iftaContent = await buildFileContent(state.iftaFile, 'IFTA QUARTERLY REPORT', addLog);
+
+    addLog(`Loading Movement Report: ${state.mvFile.name} (${(state.mvFile.size / 1024).toFixed(0)} KB)`, 'info');
+    const mvContent = await buildFileContent(state.mvFile, 'MOVEMENT REPORT', addLog);
+
+    addLog('Sending to Claude AI for analysis...', 'info');
+    btnText.innerHTML = '<div class="spinner"></div> AI Analyzing...';
+
+    const instructionText = {
+      type: 'text',
+      text: `You are an IFTA audit specialist. I will give you two files:
+1. IFTA Quarterly Report
+2. Movement Report
+
+Your job: compare the mileage/odometer data in both files. If there is a mismatch, the IFTA report is the source of truth — fix the movement report values to match.
+
+Return ONLY a valid JSON object (no markdown fences, no explanation), structured exactly like this:
+{
+  "ifta_total_miles": <number or null>,
+  "movement_total_miles": <number or null>,
+  "mismatch": <true or false>,
+  "difference": <number>,
+  "fields_compared": [
+    {
+      "field": "<field name>",
+      "ifta_value": <number or null>,
+      "movement_value": <number or null>,
+      "match": <true or false>,
+      "fixed_value": <corrected number — use IFTA as source of truth>
+    }
+  ],
+  "summary": "<1 sentence summary>",
+  "fix_description": "<what was changed in movement report>"
+}
+
+First document is the IFTA Quarterly Report. Second document is the Movement Report.`
+    };
+
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        max_tokens: 1500,
+        messages: [{
+          role: "user",
+          content: [
+            instructionText,
+            iftaContent,
+            mvContent
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`API error ${response.status}: ${errBody.slice(0, 200)}`);
+    }
+
+    const data = await response.json();
+    const rawText = data.content.map(b => b.text || '').join('');
+    addLog('AI response received', 'success');
+
+    let result;
+    try {
+      const clean = rawText.replace(/```json|```/g, '').trim();
+      result = JSON.parse(clean);
+    } catch {
+      const jsonMatch = rawText.match(/\{[\s\S]+\}/);
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+      else throw new Error('Could not parse AI response: ' + rawText.slice(0, 300));
+    }
+
+    state.auditResult = result;
+    addLog(`IFTA Total: ${result.ifta_total_miles?.toLocaleString() ?? 'N/A'} miles`, 'info');
+    addLog(`Movement Total: ${result.movement_total_miles?.toLocaleString() ?? 'N/A'} miles`, 'info');
+
+    if (result.mismatch) {
+      addLog(`⚠ Mismatch: ${Math.abs(result.difference || 0).toLocaleString()} miles difference`, 'error');
+      addLog('Applying fixes...', 'info');
+    } else {
+      addLog('✓ Reports match — no fixes needed', 'success');
+    }
+
+    displayResults(result);
+    setStep(3);
+    addLog('Done! Download your fixed files below.', 'success');
+    btnText.textContent = '✅ Analysis Complete';
+
+  } catch (err) {
+    console.error(err);
+    const errorBox = document.getElementById('error-box');
+    errorBox.textContent = '❌ ' + err.message;
+    errorBox.classList.add('visible');
+    addLog('Error: ' + err.message, 'error');
+    btn.disabled = false;
+    btnText.textContent = '⚡ Retry Analysis';
+    setStep(1);
+  }
+}
+
+// Display results table
+function displayResults(result) {
+  const panel = document.getElementById('result-panel');
+  panel.classList.add('visible');
+
+  const body = document.getElementById('diff-body');
+  body.innerHTML = '';
+
+  const fields = result.fields_compared || [];
+  let fixedCount = 0;
+
+  const totalRow = {
+    field: 'Total Mileage',
+    ifta_value: result.ifta_total_miles,
+    movement_value: result.movement_total_miles,
+    match: !result.mismatch,
+    fixed_value: result.ifta_total_miles
+  };
+
+  const allFields = [totalRow, ...fields.filter(f =>
+    !['Total Mileage', 'Total Miles', 'total mileage', 'total miles'].includes(f.field?.toLowerCase?.() ?? f.field)
+  )];
+
+  allFields.forEach(field => {
+    const tr = document.createElement('tr');
+    const matched = field.match || (field.ifta_value === field.movement_value);
+    if (!matched) fixedCount++;
+
+    const iftaVal = field.ifta_value != null ? Number(field.ifta_value).toLocaleString() : '—';
+    const mvVal   = field.movement_value != null ? Number(field.movement_value).toLocaleString() : '—';
+    const fixedVal = field.fixed_value != null ? Number(field.fixed_value).toLocaleString() : iftaVal;
+
+    const statusTag = matched
+      ? '<span class="tag ok">✓ Match</span>'
+      : '<span class="tag mismatch">✗ Mismatch</span>';
+
+    const actionCell = matched
+      ? '<span style="color:var(--muted);font-size:11px">No change</span>'
+      : `<span class="val-old">${mvVal}</span> → <span class="val-new">${fixedVal}</span> <span class="tag fixed" style="margin-left:6px">Fixed</span>`;
+
+    tr.innerHTML = `
+      <td style="font-weight:600;color:var(--text)">${field.field}</td>
+      <td style="color:var(--accent)">${iftaVal}</td>
+      <td>${mvVal}</td>
+      <td>${statusTag}</td>
+      <td>${actionCell}</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  document.getElementById('stat-fixed').textContent = fixedCount;
+  document.getElementById('stat-ifta-total').textContent =
+    result.ifta_total_miles != null ? Number(result.ifta_total_miles).toLocaleString() : '—';
+  document.getElementById('stat-mv-total').textContent =
+    result.ifta_total_miles != null ? Number(result.ifta_total_miles).toLocaleString() : '—';
+
+  document.getElementById('footer-ts').textContent = 'Audited ' + new Date().toLocaleString();
+}
+
+// Download fixed movement report
+async function downloadFixed() {
+  const { jsPDF } = window.jspdf;
+  const result = state.auditResult;
+  if (!result) return;
+
+  const doc = new jsPDF();
+  const now = new Date().toLocaleString();
+
+  doc.setFillColor(10, 10, 15);
+  doc.rect(0, 0, 210, 40, 'F');
+  doc.setTextColor(240, 192, 64);
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('IFTA AUDIT ASSISTANT', 14, 20);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(112, 112, 160);
+  doc.text('FIXED MOVEMENT REPORT', 14, 30);
+
+  doc.setTextColor(30, 30, 50);
+  doc.setFillColor(245, 245, 252);
+  doc.rect(14, 48, 182, 28, 'F');
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(80, 80, 120);
+  doc.text('AUDIT DATE', 20, 58);
+  doc.text('STATUS', 80, 58);
+  doc.text('SOURCE FILE', 140, 58);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(30, 30, 60);
+  doc.text(now, 20, 66);
+  doc.text(result.mismatch ? 'FIXED' : 'NO CHANGES NEEDED', 80, 66);
+  doc.text(state.iftaFile?.name ?? 'IFTA Report', 140, 66);
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 30, 60);
+  doc.text('AUDIT SUMMARY', 14, 88);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(80, 80, 120);
+  const summaryLines = doc.splitTextToSize(result.summary || 'Mileage reconciliation complete.', 182);
+  doc.text(summaryLines, 14, 96);
+
+  if (result.fix_description) {
+    doc.setTextColor(200, 100, 30);
+    const fixLines = doc.splitTextToSize('Applied fix: ' + result.fix_description, 182);
+    doc.text(fixLines, 14, 110);
+  }
+
+  // Table
+  let rowY = 130;
+  doc.setFillColor(10, 10, 15);
+  doc.rect(14, rowY - 8, 182, 10, 'F');
+  doc.setTextColor(240, 192, 64);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.text('FIELD', 18, rowY - 1);
+  doc.text('IFTA VALUE', 80, rowY - 1);
+  doc.text('ORIGINAL', 125, rowY - 1);
+  doc.text('FIXED VALUE', 162, rowY - 1);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(50, 50, 80);
+
+  const allRows = [
+    { field: 'Total Mileage', ifta_value: result.ifta_total_miles, movement_value: result.movement_total_miles, match: !result.mismatch, fixed_value: result.ifta_total_miles },
+    ...(result.fields_compared || []).filter(f => f.field !== 'Total Mileage')
+  ];
+
+  allRows.forEach((row, i) => {
+    if (rowY > 270) { doc.addPage(); rowY = 20; }
+    if (i % 2 === 0) { doc.setFillColor(248, 248, 255); doc.rect(14, rowY, 182, 10, 'F'); }
+
+    const iftaStr  = row.ifta_value != null ? Number(row.ifta_value).toLocaleString() : 'N/A';
+    const mvStr    = row.movement_value != null ? Number(row.movement_value).toLocaleString() : 'N/A';
+    const fixedStr = row.fixed_value != null ? Number(row.fixed_value).toLocaleString() : iftaStr;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(50, 50, 80);
+    doc.text(String(row.field), 18, rowY + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 140, 0);
+    doc.text(iftaStr, 80, rowY + 7);
+    if (!row.match) {
+      doc.setTextColor(200, 50, 50); doc.text(mvStr, 125, rowY + 7);
+      doc.setTextColor(30, 160, 80); doc.text(fixedStr + ' ✓', 162, rowY + 7);
+    } else {
+      doc.setTextColor(80, 80, 120); doc.text(mvStr, 125, rowY + 7);
+      doc.text('No change', 162, rowY + 7);
+    }
+    rowY += 12;
+  });
+
+  doc.save('fixed_movement_report.pdf');
+  addLog('Fixed Movement Report downloaded', 'success');
+}
+
+async function downloadReport() {
+  const { jsPDF } = window.jspdf;
+  const result = state.auditResult;
+  if (!result) return;
+
+  const doc = new jsPDF();
+  doc.setFillColor(10, 10, 15);
+  doc.rect(0, 0, 210, 35, 'F');
+  doc.setTextColor(240, 192, 64);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('IFTA AUDIT REPORT', 14, 18);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(112, 112, 160);
+  doc.text('Generated: ' + new Date().toLocaleString(), 14, 28);
+
+  doc.setTextColor(30, 30, 60);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('FINDINGS', 14, 50);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(80, 80, 120);
+  doc.text('IFTA Total: ' + (result.ifta_total_miles?.toLocaleString() ?? 'N/A'), 14, 60);
+  doc.text('Movement Total: ' + (result.movement_total_miles?.toLocaleString() ?? 'N/A'), 14, 68);
+  doc.text('Discrepancy: ' + (result.mismatch ? 'YES — ' + Math.abs(result.difference || 0).toLocaleString() + ' miles' : 'NONE'), 14, 76);
+  doc.text('Status: ' + (result.mismatch ? 'FIXED' : 'OK'), 14, 84);
+
+  if (result.summary) {
+    doc.setTextColor(30, 30, 60);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SUMMARY', 14, 96);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 120);
+    doc.text(doc.splitTextToSize(result.summary, 182), 14, 104);
+  }
+
+  doc.save('ifta_audit_report.pdf');
+  addLog('Audit Report downloaded', 'success');
+}
+
+document.getElementById('footer-ts').textContent = new Date().toLocaleDateString();
+</script>
+</body>
+</html>
