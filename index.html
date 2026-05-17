@@ -1069,13 +1069,17 @@ async function runAnalysis() {
     addLog('Sending to Claude AI for analysis...', 'info');
     btnText.innerHTML = '<div class="spinner"></div> AI Analyzing...';
 
+    const isCsvInput = state.mvFile && state.mvFile.name.toLowerCase().endsWith('.csv');
+
     const instructionText = {
       type: 'text',
       text: `You are an IFTA audit specialist. I will give you two files:
 1. IFTA Quarterly Report
 2. Movement Report
 
-Your job: compare the mileage/odometer data in both files. If there is a mismatch, the IFTA report is the source of truth — fix the movement report values to match.
+Your job: compare the mileage/odometer data in both files. If there is a mismatch, the IFTA report is the source of truth.
+
+${isCsvInput ? `IMPORTANT: Since the movement report is a CSV, also return "csv_patches" — a list of exact cell changes needed to fix the CSV. Each patch: { "column": "<exact column header name>", "old_value": "<current value as string>", "new_value": "<corrected value as string>", "row_hint": "<optional: any identifying value in that row to help locate it>" }. Only include rows that need to change.` : ''}
 
 Return ONLY a valid JSON object (no markdown fences, no explanation), structured exactly like this:
 {
@@ -1093,7 +1097,10 @@ Return ONLY a valid JSON object (no markdown fences, no explanation), structured
     }
   ],
   "summary": "<1 sentence summary>",
-  "fix_description": "<what was changed in movement report>"
+  "fix_description": "<what was changed in movement report>"${isCsvInput ? `,
+  "csv_patches": [
+    { "column": "<column header>", "old_value": "<old>", "new_value": "<new>", "row_hint": "<optional>" }
+  ]` : ''}
 }
 
 First document is the IFTA Quarterly Report. Second document is the Movement Report.`
@@ -1218,7 +1225,8 @@ function displayResults(result) {
   document.getElementById('stat-mv-total').textContent =
     result.ifta_total_miles != null ? Number(result.ifta_total_miles).toLocaleString() : '—';
 
-  document.getElementById('footer-ts').textContent = 'Audited ' + new Date().toLocaleString();
+  const footerTs = document.getElementById('footer-ts');
+  if (footerTs) footerTs.textContent = 'Audited ' + new Date().toLocaleString();
 }
 
 // Download fixed movement report — same format as input
@@ -1236,49 +1244,91 @@ async function downloadFixed() {
   }
 }
 
-// CSV: read original, apply fixes, download
+// CSV: apply patches from AI result, keep all original rows
 async function downloadFixedCsv(result) {
   try {
     const originalText = await readFileAsText(state.mvFile);
-    addLog('Applying fixes to CSV...', 'info');
+    const patches = result.csv_patches || [];
 
-    // Ask AI to apply the fixes to the CSV
-    const fixPrompt = `You have this CSV file content from a Movement Report:
+    if (patches.length === 0) {
+      // No patches — download as-is
+      const blob = new Blob([originalText], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = state.mvFile.name.replace('.csv', '_fixed.csv');
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('No CSV changes needed — original downloaded', 'success');
+      return;
+    }
 
-${originalText.slice(0, 20000)}
+    addLog(`Applying ${patches.length} fix(es) to CSV...`, 'info');
 
-Apply these fixes:
-- IFTA total miles: ${result.ifta_total_miles}
-- Fix description: ${result.fix_description || 'Adjust mileage values to match IFTA total'}
-- Fields to fix: ${JSON.stringify(result.fields_compared?.filter(f => !f.match) || [])}
+    // Parse CSV preserving structure
+    const lines = originalText.split('\n');
+    const headerLine = lines[0];
+    const headers = parseCsvRow(headerLine);
 
-Return ONLY the complete fixed CSV content, no explanation, no markdown, just the raw CSV text with the corrected values.`;
+    // Apply patches row by row
+    const fixedLines = [headerLine];
+    let fixCount = 0;
 
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        max_tokens: 4000,
-        messages: [{ role: "user", content: fixPrompt }]
-      })
-    });
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) { fixedLines.push(line); continue; }
 
-    const data = await response.json();
-    const fixedCsv = data.content.map(b => b.text || '').join('').trim();
+      const cells = parseCsvRow(line);
+      let changed = false;
 
-    // Download as CSV
+      for (const patch of patches) {
+        const colIdx = headers.findIndex(h =>
+          h.trim().toLowerCase() === patch.column.trim().toLowerCase()
+        );
+        if (colIdx === -1) continue;
+
+        const cellVal = (cells[colIdx] || '').trim().replace(/^"|"$/g, '');
+        const oldVal  = String(patch.old_value || '').trim();
+
+        if (cellVal === oldVal || cellVal.replace(/,/g,'') === oldVal.replace(/,/g,'')) {
+          cells[colIdx] = patch.new_value;
+          changed = true;
+          fixCount++;
+        }
+      }
+
+      fixedLines.push(changed ? cells.map(c => /,|"/.test(c) ? `"${c}"` : c).join(',') : line);
+    }
+
+    addLog(`Fixed ${fixCount} cell(s) across ${lines.length - 1} rows`, 'success');
+
+    const fixedCsv = fixedLines.join('\n');
     const blob = new Blob([fixedCsv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const origName = state.mvFile.name.replace('.csv', '');
-    a.download = `${origName}_fixed.csv`;
+    a.download = state.mvFile.name.replace('.csv', '_fixed.csv');
     a.click();
     URL.revokeObjectURL(url);
     addLog('Fixed CSV downloaded', 'success');
+
   } catch (err) {
     addLog('CSV fix error: ' + err.message, 'error');
   }
+}
+
+// Simple CSV row parser (handles quoted fields)
+function parseCsvRow(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; }
+    else if (ch === ',' && !inQ) { result.push(cur); cur = ''; }
+    else { cur += ch; }
+  }
+  result.push(cur);
+  return result;
 }
 
 // PDF: generate summary report
